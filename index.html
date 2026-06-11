@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora de Riesgo de Aneuploidías por Edad Materna</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            max-width: 800px;
+            width: 100%;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 5px;
+            font-size: 24px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #7f8c8d;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+        @media (max-width: 600px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+        .control-panel {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        label {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #34495e;
+            font-size: 16px;
+        }
+        .age-display {
+            font-size: 32px;
+            font-weight: bold;
+            color: #3498db;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        input[type=range] {
+            width: 100%;
+            margin-bottom: 30px;
+        }
+        .result-card {
+            background-color: #ecf0f1;
+            border-left: 5px solid #3498db;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .result-card.high-risk {
+            border-left-color: #e74c3c;
+        }
+        .result-title {
+            font-weight: bold;
+            font-size: 14px;
+            color: #7f8c8d;
+            text-transform: uppercase;
+        }
+        .result-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-top: 5px;
+        }
+        .chart-panel {
+            position: relative;
+            height: 300px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Simulador Clínico: Riesgo de Aneuploidías por Edad Materna</h1>
+    <p class="subtitle">Laboratorio de Genética - Ejercicio Práctico de No Disyunción Meiótica</p>
+    
+    <div class="grid">
+        <div class="control-panel">
+            <label for="ageSlider">Selecciona la Edad de la Madre:</label>
+            <div id="ageValue" class="age-display">35 años</div>
+            <input type="range" id="ageSlider" min="20" max="48" value="35" step="1">
+            
+            <div class="result-card" id="downCard">
+                <div class="result-title">Síndrome de Down (Trisomía 21)</div>
+                <div id="riskDown" class="result-value">1 en 350</div>
+            </div>
+            
+            <div class="result-card" id="edwardsCard">
+                <div class="result-title font-small">Síndrome de Edwards (T18) / Patau (T13)</div>
+                <div id="riskOthers" class="result-value">1 en 1,500</div>
+            </div>
+        </div>
+        
+        <div class="chart-panel">
+            <canvas id="riskChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Datos epidemiológicos aproximados de riesgo en el segundo trimestre / nacimiento
+    const ageData = [20, 25, 30, 32, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48];
+    // Tasas por cada 10,000 nacimientos para graficar linealmente con facilidad
+    const downRates = [6, 8, 11, 14, 29, 36, 44, 56, 71, 100, 125, 167, 200, 250, 333, 416, 500, 666];
+    
+    // Diccionario exacto para mostrar texto amigable "1 en X"
+    const riskTextDown = {
+        20: "1 en 1,660", 21: "1 en 1,660", 22: "1 en 1,420", 23: "1 en 1,420", 24: "1 en 1,250",
+        25: "1 en 1,250", 26: "1 en 1,170", 27: "1 en 1,120", 28: "1 en 1,050", 29: "1 en 1,000",
+        30: "1 en 952",   31: "1 en 909",   32: "1 en 769",   33: "1 en 602",   34: "1 en 485",
+        35: "1 en 350",   36: "1 en 275",   37: "1 en 225",   38: "1 en 175",   39: "1 en 140",
+        40: "1 in 100",   41: "1 en 80",    42: "1 en 60",    43: "1 en 50",    44: "1 en 40",
+        45: "1 en 30",    46: "1 en 24",    47: "1 en 20",    48: "1 en 15"
+    };
+
+    const riskTextOthers = {
+        20: "1 en 10,000", 25: "1 en 9,500", 30: "1 en 7,000", 35: "1 en 1,500", 
+        40: "1 en 400", 45: "1 en 90", 46: "1 en 70", 47: "1 en 50", 48: "1 en 35"
+    };
+
+    const slider = document.getElementById('ageSlider');
+    const ageValue = document.getElementById('ageValue');
+    const riskDownText = document.getElementById('riskDown');
+    const riskOthersText = document.getElementById('riskOthers');
+    const downCard = document.getElementById('downCard');
+
+    // Inicializar Gráfica con Chart.js
+    const ctx = document.getElementById('riskChart').getContext('2d');
+    const riskChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: ageData,
+            datasets: [{
+                label: 'Casos de T21 por 10,000 nacimientos',
+                data: downRates,
+                borderColor: '#3498db',
+                backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { title: { display: true, text: 'Edad Materna' } },
+                y: { title: { display: true, text: 'Frecuencia (por 10,000)' } }
+            }
+        }
+    });
+
+    function updateRisk(age) {
+        ageValue.innerText = age + " años";
+        
+        // Actualizar textos
+        const downRisk = riskTextDown[age] || "1 en 1,000";
+        riskDownText.innerText = downRisk;
+        
+        // Estimación rápida para T18/T13 combinadas si no hay dato exacto en el diccionario
+        let othersRisk = riskTextOthers[age];
+        if(!othersRisk) {
+            if (age < 30) othersRisk = "1 en 8,500";
+            else if (age < 35) othersRisk = "1 en 4,000";
+            else if (age < 40) othersRisk = "1 en 800";
+            else othersRisk = "1 en 200";
+        }
+        riskOthersText.innerText = othersRisk;
+
+        // Alerta visual si es edad materna avanzada (>= 35 años)
+        if(age >= 35) {
+            downCard.classList.add('high-risk');
+            downCard.style.borderLeftColor = '#e74c3c';
+        } else {
+            downCard.classList.remove('high-risk');
+            downCard.style.borderLeftColor = '#3498db';
+        }
+    }
+
+    slider.addEventListener('input', (e) => {
+        updateRisk(e.target.value);
+    });
+
+    // Estado inicial
+    updateRisk(35);
+</script>
+</body>
+</html>
